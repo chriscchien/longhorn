@@ -1,0 +1,55 @@
+name: Trigger Jenkins mirror CSI images
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - versions.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-csi-images
+  cancel-in-progress: false
+
+jobs:
+  trigger-jenkins:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Jenkins mirror-csi-images job
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_URL }}
+          JENKINS_USER: ${{ secrets.JENKINS_USER }}
+          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          JENKINS_URL="${JENKINS_URL%/}"
+          JOB_URL="${JENKINS_URL}/job/private/job/mirror-csi-images/buildWithParameters"
+
+          echo "Triggering Jenkins job: ${JOB_URL}"
+
+          curl_args=(
+            -fsS
+            -X POST
+            --user "${JENKINS_USER}:${JENKINS_API_TOKEN}"
+          )
+
+          if crumb_json="$(curl -fsS --user "${JENKINS_USER}:${JENKINS_API_TOKEN}" "${JENKINS_URL}/crumbIssuer/api/json" 2>/dev/null)"; then
+            crumb_header="$(echo "${crumb_json}" | jq -r '.crumbRequestField + ": " + .crumb')"
+            curl_args+=(-H "${crumb_header}")
+          fi
+
+          curl "${curl_args[@]}" "${JOB_URL}" \
+            --data-urlencode "SEND_SLACK_NOTIFICATION=false" \
+            --data-urlencode "NOTIFY_SLACK_CHANNEL=" \
+            --data-urlencode "LONGHORN_IMAGES_FILE_URL=https://raw.githubusercontent.com/longhorn/longhorn/master/deploy/longhorn-images.txt" \
+            --data-urlencode "CSI_IMAGES=" \
+            --data-urlencode "TF_VAR_tf_workspace=/src/longhorn-tests/mirror_csi_images"
+
+          echo "Jenkins job triggered successfully"
+  
