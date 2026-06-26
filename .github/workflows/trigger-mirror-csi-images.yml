@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - mirror_image_action
     paths:
       - versions.json
   workflow_dispatch:
